@@ -29,9 +29,6 @@ func init() {
 func main() {
 	wsServer := chat.NewWSServer()
 	go wsServer.Run()
-	// room := chat.NewRoom()
-	// room.Tracer = trace.New(os.Stdout)
-	// go room.Run()
 	db := config.ConnectDB()
 	userRepo := repositories.NewUserRepo(db)
 	userH := controllers.NewBaseHandler(userRepo)
@@ -40,13 +37,13 @@ func main() {
 	r.Use(cors.Default())
 	r.POST("/login", userH.Login)
 	r.POST("/users", userH.CreateUser)
-	authorized := r.Group("/")
-	authorized.Use(middleware.TokenAuthMiddleware())
-	authorized.GET("/ping", func(c *gin.Context) {
+	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"message": "pong",
 		})
 	})
+	authorized := r.Group("/")
+	authorized.Use(middleware.TokenAuthMiddleware())
 
 	authorized.DELETE("/users/:id", userH.DeleteUser)
 	r.GET("/ws", func(c *gin.Context) {

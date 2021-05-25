@@ -2,4 +2,5 @@
   padding: 5% 0;
   overflow: auto;
   flex: auto;
+  min-height: 150px;
 }

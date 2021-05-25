@@ -4,20 +4,25 @@ import (
 	"fmt"
 
 	"github.com/carmandomx/acapp/trace"
+	"github.com/google/uuid"
 )
 
 type Room struct {
-	name string
+	Name string `json:"name"`
 
 	forward chan *Message
 
-	join chan *client
+	join chan *Client
 
-	leave chan *client
+	leave chan *Client
 
-	clients map[*client]bool
+	clients map[*Client]bool
 
 	Tracer trace.Tracer
+
+	Id uuid.UUID `json:"id"`
+
+	Private bool `json:"private"`
 }
 
 func (r *Room) Run() {
@@ -29,7 +34,6 @@ func (r *Room) Run() {
 
 		case client := <-r.leave:
 			r.unregisterClientInRoom(client)
-			// close(client.send)
 			r.Tracer.Trace("Client left")
 
 		case msg := <-r.forward:
@@ -39,12 +43,16 @@ func (r *Room) Run() {
 	}
 }
 
-func (room *Room) registerClientInRoom(client *client) {
-	room.notifyClientJoined(client)
+func (room *Room) registerClientInRoom(client *Client) {
+	if !room.Private {
+		room.notifyClientJoined(client)
+
+	}
 	room.clients[client] = true
+
 }
 
-func (room *Room) unregisterClientInRoom(client *client) {
+func (room *Room) unregisterClientInRoom(client *Client) {
 
 	delete(room.clients, client)
 
@@ -57,7 +65,7 @@ func (room *Room) broadcastToClientsInRoom(message *Message) {
 }
 
 func (room *Room) GetName() string {
-	return room.name
+	return room.Name
 }
 
 const (
@@ -65,25 +73,31 @@ const (
 	messageBufferSize = 256
 )
 
-func NewRoom(name string) *Room {
+func NewRoom(name string, private bool) *Room {
 	return &Room{
-		name:    name,
+		Name:    name,
 		forward: make(chan *Message),
-		join:    make(chan *client),
-		leave:   make(chan *client),
-		clients: make(map[*client]bool),
+		join:    make(chan *Client),
+		leave:   make(chan *Client),
+		clients: make(map[*Client]bool),
 		Tracer:  trace.Off(),
+		Id:      uuid.New(),
+		Private: private,
 	}
 }
 
 const welcomeMessage = "%s joined the room"
 
-func (room *Room) notifyClientJoined(client *client) {
+func (room *Room) notifyClientJoined(client *Client) {
 	message := &Message{
 		Action:  SendMessageAction,
-		Target:  room.name,
+		Target:  room,
 		Message: fmt.Sprintf(welcomeMessage, client.GetName()),
 	}
 
 	room.broadcastToClientsInRoom(message)
+}
+
+func (room *Room) GetId() string {
+	return room.Id.String()
 }

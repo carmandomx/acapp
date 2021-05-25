@@ -9,10 +9,10 @@ const InfoBar = ({ room, onLeave }) => (
   <div className='infoBar'>
     <div className='leftInnerContainer'>
       <img className='onlineIcon' src={onlineIcon} alt='online icon' />
-      <h3>{room}</h3>
+      <h3>{room.name}</h3>
     </div>
     <div className='rightInnerContainer'>
-      <a onClick={onLeave}>
+      <a href='' onClick={onLeave}>
         <img src={closeIcon} alt='close icon' />
       </a>
     </div>

@@ -6,21 +6,23 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
-type client struct {
+type Client struct {
 	socket   *websocket.Conn
 	wsServer *WsServer
 	send     chan *Message
 	rooms    map[*Room]bool
-	Name     string `json:"name"`
+	Name     string    `json:"name"`
+	Id       uuid.UUID `json:"id"`
 }
 
 const (
 
 	// Max time till next pong from peer
-	pongWait   = 60 * time.Second
+	pongWait   = 60 * time.Second * 5
 	pingPeriod = (pongWait * 9) / 10
 	// Maximum message size allowed from peer.
 	maxMessageSize = 10000
@@ -28,18 +30,19 @@ const (
 
 var upgrader = &websocket.Upgrader{ReadBufferSize: socketBufferSize, WriteBufferSize: messageBufferSize, Subprotocols: []string{"token"}}
 
-func newClient(conn *websocket.Conn, wsServer *WsServer, name string) *client {
-	return &client{
+func newClient(conn *websocket.Conn, wsServer *WsServer, name string) *Client {
+	return &Client{
 		socket:   conn,
 		wsServer: wsServer,
 		send:     make(chan *Message),
 		rooms:    make(map[*Room]bool),
 		Name:     name,
+		Id:       uuid.New(),
 	}
 
 }
 
-func (c *client) readPump() {
+func (c *Client) readPump() {
 	defer func() {
 		c.disconnect()
 	}()
@@ -49,14 +52,16 @@ func (c *client) readPump() {
 	for {
 		var msg *Message
 		err := c.socket.ReadJSON(&msg)
+		fmt.Println(msg)
 		if err != nil {
+			fmt.Printf("error on readPump: %s", err.Error())
 			return
 		}
 		c.handleNewMessage(*msg)
 	}
 }
 
-func (c *client) writePump() {
+func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -72,11 +77,12 @@ func (c *client) writePump() {
 	}
 }
 
-func (c *client) disconnect() {
+func (c *Client) disconnect() {
 	c.wsServer.unregister <- c
 	for room := range c.rooms {
 		room.leave <- c
 	}
+	fmt.Println("cerre el chan send")
 	close(c.send)
 	c.socket.Close()
 }
@@ -103,13 +109,13 @@ func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request) {
 	client := newClient(sock, wsServer, name[0])
 
 	go client.writePump()
-	client.readPump()
+	go client.readPump()
 
 	wsServer.register <- client
-	fmt.Println("me ejecute hasta aqui")
+
 }
 
-func (client *client) handleNewMessage(message Message) {
+func (client *Client) handleNewMessage(message Message) {
 
 	// Attach the client object as the sender of the messsage.
 	message.Sender = client
@@ -118,9 +124,9 @@ func (client *client) handleNewMessage(message Message) {
 	case SendMessageAction:
 		// The send-message action, this will send messages to a specific room now.
 		// Which room wil depend on the message Target
-		roomName := message.Target
+		roomName := message.Target.GetId()
 		// Use the ChatServer method to find the room, and if found, broadcast!
-		if room := client.wsServer.findRoomByName(roomName); room != nil {
+		if room := client.wsServer.findRoomById(roomName); room != nil {
 			room.forward <- &message
 		}
 	// We delegate the join and leave actions.
@@ -129,30 +135,85 @@ func (client *client) handleNewMessage(message Message) {
 
 	case LeaveRoomAction:
 		client.handleLeaveRoomMessage(message)
+
+	case JoinRoomPrivateAction:
+		client.handleJoinRoomPrivateMessage(message)
 	}
+
 }
 
-func (client *client) handleJoinRoomMessage(message Message) {
+func (client *Client) handleJoinRoomMessage(message Message) {
 	roomName := message.Message
+	client.joinRoom(roomName, nil)
 
-	room := client.wsServer.findRoomByName(roomName)
-	if room == nil {
-		room = client.wsServer.createRoom(roomName)
-	}
-
-	client.rooms[room] = true
-
-	room.join <- client
 }
 
-func (client *client) handleLeaveRoomMessage(message Message) {
-	room := client.wsServer.findRoomByName(message.Message)
+func (client *Client) handleLeaveRoomMessage(message Message) {
+	room := client.wsServer.findRoomById(message.Message)
+	if room == nil {
+		return
+	}
 
 	delete(client.rooms, room)
 
 	room.leave <- client
 }
 
-func (client *client) GetName() string {
+func (client *Client) handleJoinRoomPrivateMessage(message Message) {
+
+	target := client.wsServer.findClientByID(message.Message)
+	if target == nil {
+		return
+	}
+
+	// create unique room name combined to the two IDs
+	roomName := message.Message + client.Id.String()
+
+	client.joinRoom(roomName, target)
+	target.joinRoom(roomName, client)
+
+}
+
+func (client *Client) notifyRoomJoined(room *Room, sender *Client) {
+	message := Message{
+		Action: RoomJoinedAction,
+		Target: room,
+		Sender: sender,
+	}
+
+	client.send <- &message
+}
+
+func (client *Client) joinRoom(roomName string, sender *Client) {
+
+	room := client.wsServer.findRoomByName(roomName)
+	if room == nil {
+		room = client.wsServer.createRoom(roomName, sender != nil)
+	}
+
+	// Don't allow to join private rooms through public room message
+	if sender == nil && room.Private {
+		return
+	}
+
+	if !client.isInRoom(room) {
+
+		client.rooms[room] = true
+		room.join <- client
+
+		client.notifyRoomJoined(room, sender)
+	}
+
+}
+
+func (client *Client) isInRoom(room *Room) bool {
+	if _, ok := client.rooms[room]; ok {
+		return true
+	}
+
+	return false
+}
+
+func (client *Client) GetName() string {
 	return client.Name
 }

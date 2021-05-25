@@ -1,9 +1,8 @@
 .textContainer {
   display: flex;
   flex-direction: column;
-  /* margin-left: 100px; */
-  /* color: white; */
   height: 100%;
+  max-height: 120px;
   justify-content: space-between;
   grid-row: 2 / 4;
   grid-column: 1 / 2;
@@ -29,8 +28,8 @@
   margin-bottom: 0px;
 }
 
-@media (min-width: 320px) and (max-width: 1200px) {
+/* @media (min-width: 320px) and (max-width: 1200px) {
   .textContainer {
     display: none;
   }
-}
+} */
