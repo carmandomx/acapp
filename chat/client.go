@@ -1,26 +1,33 @@
 package chat
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/carmandomx/acapp/config"
+	"github.com/carmandomx/acapp/models"
 	"github.com/gorilla/websocket"
 )
 
 type Client struct {
 	socket   *websocket.Conn
 	wsServer *WsServer
-	send     chan *Message
+	send     chan []byte
 	rooms    map[*Room]bool
-	Name     string    `json:"name"`
-	Id       uuid.UUID `json:"id"`
+	Name     string `json:"name"`
+	Id       uint   `json:"id"`
 }
 
-const (
+var (
+	newline = []byte{'\n'}
+)
 
+const (
+	writeWait = 10 * time.Second
 	// Max time till next pong from peer
 	pongWait   = 60 * time.Second * 5
 	pingPeriod = (pongWait * 9) / 10
@@ -28,16 +35,20 @@ const (
 	maxMessageSize = 10000
 )
 
+type contextKey string
+
+const UserContextKey = contextKey("user")
+
 var upgrader = &websocket.Upgrader{ReadBufferSize: socketBufferSize, WriteBufferSize: messageBufferSize, Subprotocols: []string{"token"}}
 
-func newClient(conn *websocket.Conn, wsServer *WsServer, name string) *Client {
+func newClient(conn *websocket.Conn, wsServer *WsServer, name string, id uint) *Client {
 	return &Client{
 		socket:   conn,
 		wsServer: wsServer,
-		send:     make(chan *Message),
+		send:     make(chan []byte),
 		rooms:    make(map[*Room]bool),
 		Name:     name,
-		Id:       uuid.New(),
+		Id:       id,
 	}
 
 }
@@ -50,14 +61,26 @@ func (c *Client) readPump() {
 	c.socket.SetReadDeadline(time.Now().Add(pongWait))
 	c.socket.SetPongHandler(func(string) error { c.socket.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
-		var msg *Message
-		err := c.socket.ReadJSON(&msg)
-		fmt.Println(msg)
+
+		_, jsonMsg, err := c.socket.ReadMessage()
+
 		if err != nil {
-			fmt.Printf("error on readPump: %s", err.Error())
-			return
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("unexpected close error: %v", err)
+			}
+			break
 		}
-		c.handleNewMessage(*msg)
+
+		c.handleNewMessage(jsonMsg)
+
+		// var msg *Message
+		// err := c.socket.ReadJSON(&msg)
+		// fmt.Println(msg)
+		// if err != nil {
+		// 	fmt.Printf("error on readPump: %s", err.Error())
+		// 	return
+		// }
+		// c.handleNewMessage(*msg)
 	}
 }
 
@@ -67,12 +90,37 @@ func (c *Client) writePump() {
 		ticker.Stop()
 		c.socket.Close()
 	}()
-	for msg := range c.send {
-		fmt.Println(msg)
-		err := c.socket.WriteJSON(msg)
-		if err != nil {
-			fmt.Println(err)
-			return
+	for {
+		select {
+		case message, ok := <-c.send:
+			c.socket.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				// The WsServer closed the channel.
+				c.socket.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			w, err := c.socket.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			// Attach queued chat messages to the current websocket message.
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write(newline)
+				w.Write(<-c.send)
+			}
+
+			if err := w.Close(); err != nil {
+				return
+			}
+		case <-ticker.C:
+			c.socket.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.socket.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -87,7 +135,7 @@ func (c *Client) disconnect() {
 	c.socket.Close()
 }
 
-func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request) {
+func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request, id uint) {
 
 	name, ok := r.URL.Query()["name"]
 
@@ -99,6 +147,7 @@ func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request) {
 	upgrader.CheckOrigin = func(r *http.Request) bool {
 		return true
 	}
+
 	sock, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
@@ -106,7 +155,7 @@ func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := newClient(sock, wsServer, name[0])
+	client := newClient(sock, wsServer, name[0], id)
 
 	go client.writePump()
 	go client.readPump()
@@ -115,7 +164,14 @@ func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (client *Client) handleNewMessage(message Message) {
+func (client *Client) handleNewMessage(jsonMsg []byte) {
+
+	var message Message
+
+	if err := json.Unmarshal(jsonMsg, &message); err != nil {
+		log.Printf("Error on unmarshal JSON message %s", err)
+		return
+	}
 
 	// Attach the client object as the sender of the messsage.
 	message.Sender = client
@@ -161,30 +217,34 @@ func (client *Client) handleLeaveRoomMessage(message Message) {
 
 func (client *Client) handleJoinRoomPrivateMessage(message Message) {
 
-	target := client.wsServer.findClientByID(message.Message)
-	if target == nil {
-		return
-	}
+	// target := client.wsServer.findClientByID(message.Message)
+	target := client.wsServer.findUserById(message.Message)
 
 	// create unique room name combined to the two IDs
-	roomName := message.Message + client.Id.String()
+	roomName := message.Message + strconv.FormatUint(uint64(client.Id), 10)
 
-	client.joinRoom(roomName, target)
-	target.joinRoom(roomName, client)
+	joinedRoom := client.joinRoom(roomName, target)
+
+	if joinedRoom != nil {
+		client.inviteTargetUser(target, joinedRoom)
+	}
+
+	// client.joinRoom(roomName, target)
+	// target.joinRoom(roomName, client)
 
 }
 
-func (client *Client) notifyRoomJoined(room *Room, sender *Client) {
+func (client *Client) notifyRoomJoined(room *Room, sender models.IUser) {
 	message := Message{
 		Action: RoomJoinedAction,
 		Target: room,
 		Sender: sender,
 	}
 
-	client.send <- &message
+	client.send <- message.encode()
 }
 
-func (client *Client) joinRoom(roomName string, sender *Client) {
+func (client *Client) joinRoom(roomName string, sender models.IUser) *Room {
 
 	room := client.wsServer.findRoomByName(roomName)
 	if room == nil {
@@ -193,17 +253,29 @@ func (client *Client) joinRoom(roomName string, sender *Client) {
 
 	// Don't allow to join private rooms through public room message
 	if sender == nil && room.Private {
-		return
+		return nil
 	}
 
 	if !client.isInRoom(room) {
-
 		client.rooms[room] = true
 		room.join <- client
-
 		client.notifyRoomJoined(room, sender)
 	}
+	return room
 
+}
+
+func (client *Client) inviteTargetUser(target models.User, room *Room) {
+	inviteMessage := &Message{
+		Action:  JoinRoomPrivateAction,
+		Message: target.GetId(),
+		Target:  room,
+		Sender:  client,
+	}
+
+	if err := config.Redis.Publish(ctx, PubSubGeneralChannel, inviteMessage.encode()).Err(); err != nil {
+		log.Println(err)
+	}
 }
 
 func (client *Client) isInRoom(room *Room) bool {
@@ -216,4 +288,8 @@ func (client *Client) isInRoom(room *Room) bool {
 
 func (client *Client) GetName() string {
 	return client.Name
+}
+
+func (client *Client) GetId() string {
+	return strconv.FormatUint(uint64(client.Id), 10)
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/carmandomx/acapp/auth"
 	"github.com/carmandomx/acapp/models"
+	"github.com/carmandomx/acapp/repositories"
 	"github.com/gin-gonic/gin"
 )
 
@@ -83,7 +84,7 @@ func (h *BaseHandler) Login(c *gin.Context) {
 		})
 	}
 
-	ok := models.CheckPasswordHash(loginData.Password, u.Password)
+	ok := repositories.CheckPasswordHash(loginData.Password, u.Password)
 
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{

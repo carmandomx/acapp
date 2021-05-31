@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
+	"github.com/carmandomx/acapp/auth"
 	"github.com/carmandomx/acapp/chat"
 	"github.com/carmandomx/acapp/config"
 	"github.com/carmandomx/acapp/controllers"
@@ -20,6 +22,10 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type contextKey string
+
+const UserContextKey = contextKey("user")
+
 func init() {
 	if err := godotenv.Load(); err != nil {
 		log.Print("No .env file found")
@@ -27,12 +33,15 @@ func init() {
 }
 
 func main() {
-	wsServer := chat.NewWSServer()
-	go wsServer.Run()
+
 	db := config.ConnectDB()
+	config.CreateRedisClient()
 	userRepo := repositories.NewUserRepo(db)
 	userH := controllers.NewBaseHandler(userRepo)
-	db.AutoMigrate(&models.User{})
+	db.AutoMigrate(&repositories.User{})
+	db.AutoMigrate(&models.Room{})
+	wsServer := chat.NewWSServer(repositories.NewRoomRepo(db), userRepo)
+	go wsServer.Run()
 	r := gin.Default()
 	r.Use(cors.Default())
 	r.POST("/login", userH.Login)
@@ -72,7 +81,10 @@ func main() {
 			c.Writer.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		chat.ServeWS(wsServer, c.Writer, c.Request)
+		tokenMetadata, _ := auth.Extract(token)
+		fmt.Println(tokenMetadata)
+		id, _ := strconv.ParseUint(tokenMetadata.UserId, 0, 32)
+		chat.ServeWS(wsServer, c.Writer, c.Request, uint(id))
 	})
 	r.Run()
 }
