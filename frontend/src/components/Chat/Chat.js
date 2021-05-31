@@ -74,22 +74,27 @@ const Chat = () => {
       socket.onopen = () => {}
 
       socket.onmessage = e => {
-        let msg = JSON.parse(e.data)
-        switch (msg.action) {
-          case 'send-message':
-            handleChatMsg(msg)
-            break
-          case 'user-join':
-            handleUserJoined(msg)
-            break
-          case 'user-left':
-            handleUserLeft(msg)
-            break
-          case 'room-joined':
-            handleRoomJoined(msg)
-            break
-          default:
-            break
+        let data = e.data
+        data = data.split(/\r?\n/)
+
+        for (let i = 0; i < data.length; i++) {
+          let msg = JSON.parse(data[i])
+          switch (msg.action) {
+            case 'send-message':
+              handleChatMsg(msg)
+              break
+            case 'user-join':
+              handleUserJoined(msg)
+              break
+            case 'user-left':
+              handleUserLeft(msg)
+              break
+            case 'room-joined':
+              handleRoomJoined(msg)
+              break
+            default:
+              break
+          }
         }
       }
     }

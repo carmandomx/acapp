@@ -112,6 +112,12 @@ func (room *Room) subscribeToRoomMessages() {
 
 	for msg := range ch {
 		fmt.Println(msg)
-		// room.broadcastToClientsInRoom(&Message{})
+		room.broadcastToClientsInRoom([]byte(msg.Payload))
+	}
+}
+
+func (room *Room) broadcastToClientsInRoom(message []byte) {
+	for client := range room.clients {
+		client.send <- message
 	}
 }

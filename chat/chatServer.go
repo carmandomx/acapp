@@ -16,7 +16,7 @@ type WsServer struct {
 	clients        map[*Client]bool
 	register       chan *Client
 	unregister     chan *Client
-	broadcast      chan *Message
+	broadcast      chan Message
 	rooms          map[*Room]bool
 	users          []models.User
 	roomRepository models.RoomRepository
@@ -28,7 +28,7 @@ func NewWSServer(roomRepository models.RoomRepository, userRepository models.Use
 		clients:        make(map[*Client]bool),
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
-		broadcast:      make(chan *Message),
+		broadcast:      make(chan Message),
 		rooms:          make(map[*Room]bool),
 		roomRepository: roomRepository,
 		userRepository: userRepository,
@@ -97,7 +97,7 @@ func (server *WsServer) listenPubSubChannel() {
 	ch := pubsub.Channel()
 	for msg := range ch {
 
-		var message *Message
+		var message Message
 		if err := json.Unmarshal([]byte(msg.Payload), &message); err != nil {
 			log.Printf("Error on unmarshal JSON message %s", err)
 			return
@@ -114,7 +114,7 @@ func (server *WsServer) listenPubSubChannel() {
 	}
 }
 
-func (server *WsServer) handleUserJoinPrivate(message *Message) {
+func (server *WsServer) handleUserJoinPrivate(message Message) {
 	// Find client for given user, if found add the user to the room.
 	targetClient := server.findClientByID(message.Message)
 	if targetClient != nil {
@@ -122,7 +122,7 @@ func (server *WsServer) handleUserJoinPrivate(message *Message) {
 	}
 }
 
-func (server *WsServer) handleUserJoined(message *Message) {
+func (server *WsServer) handleUserJoined(message Message) {
 	// Add the user to the slice
 	id, _ := strconv.ParseInt(message.Sender.GetId(), 0, 32)
 
@@ -131,7 +131,7 @@ func (server *WsServer) handleUserJoined(message *Message) {
 	server.broadcastToClients(message)
 }
 
-func (server *WsServer) handleUserLeft(message *Message) {
+func (server *WsServer) handleUserLeft(message Message) {
 	// Remove the user from the slice
 	for i, user := range server.users {
 		if user.GetId() == message.Sender.GetId() {
@@ -157,7 +157,7 @@ func (server *WsServer) unregisterClient(client *Client) {
 	}
 }
 
-func (server *WsServer) broadcastToClients(message *Message) {
+func (server *WsServer) broadcastToClients(message Message) {
 	for client := range server.clients {
 		fmt.Println(message.Sender)
 		client.send <- message.encode()
