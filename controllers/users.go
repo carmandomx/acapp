@@ -38,7 +38,7 @@ func (h *BaseHandler) CreateUser(c *gin.Context) {
 		})
 		return
 	}
-
+	u.Password, _ = repositories.HashPassword(u.Password)
 	err = h.userRepo.Create(&u)
 
 	if err != nil {
