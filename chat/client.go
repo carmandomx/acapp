@@ -72,15 +72,6 @@ func (c *Client) readPump() {
 		}
 
 		c.handleNewMessage(jsonMsg)
-
-		// var msg *Message
-		// err := c.socket.ReadJSON(&msg)
-		// fmt.Println(msg)
-		// if err != nil {
-		// 	fmt.Printf("error on readPump: %s", err.Error())
-		// 	return
-		// }
-		// c.handleNewMessage(*msg)
 	}
 }
 
@@ -135,15 +126,7 @@ func (c *Client) disconnect() {
 	c.socket.Close()
 }
 
-func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request, id uint) {
-
-	name, ok := r.URL.Query()["name"]
-
-	if !ok || len(name[0]) < 1 {
-		log.Println("Url Param 'name' is missing")
-		return
-	}
-
+func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request, id uint, name string) {
 	upgrader.CheckOrigin = func(r *http.Request) bool {
 		return true
 	}
@@ -155,7 +138,7 @@ func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request, id uint
 		return
 	}
 
-	client := newClient(sock, wsServer, name[0], id)
+	client := newClient(sock, wsServer, name, id)
 
 	go client.writePump()
 	go client.readPump()

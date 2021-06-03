@@ -18,6 +18,7 @@ const reducer = (state = INITIAL_STATE, action) => {
       return {
         ...state,
         access_token: action.payload.access_token,
+        user: action.payload.userId,
         isLoading: false
       }
 

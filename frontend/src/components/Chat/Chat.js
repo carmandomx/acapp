@@ -5,19 +5,17 @@ import { useHistory } from 'react-router-dom'
 import './Chat.css'
 import ChatRoom from '../ChatRoom/ChatRoom'
 const Chat = () => {
-  const [socket, setSocket] = useState(null)
   const [users, setUsers] = useState([])
   const [rooms, setRooms] = useState([])
   const [roomInput, setRoomInput] = useState('')
   const history = useHistory()
+  const [socket, setSocket] = useState(null)
   const accessToken = useSelector(state => state.access_token)
 
   useEffect(() => {
     if (accessToken) {
       const encoded = encodeURI(accessToken)
-      setSocket(
-        new WebSocket('ws://localhost:8080/ws?name=Kappa', ['token', encoded])
-      )
+      setSocket(new WebSocket('ws://localhost:8080/ws', ['token', encoded]))
     }
   }, [accessToken])
 
@@ -134,7 +132,7 @@ const Chat = () => {
     history.push('/')
   }
 
-  const list = rooms.map(room => (
+  const list = rooms.map((room, i) => (
     <ChatRoom
       socket={socket}
       room={room}
@@ -142,7 +140,7 @@ const Chat = () => {
       messages={room.messages}
       handleMsg={sendMessage}
       handleDM={joinPrivateRoom}
-      key={room.name}
+      key={room.id}
     />
   ))
   return (
@@ -153,7 +151,15 @@ const Chat = () => {
           Join
         </button>
       </div>
-      <div>{socket ? <>{list}</> : 'loading'}</div>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'space-around'
+        }}
+      >
+        {socket ? <>{list}</> : 'loading'}
+      </div>
     </>
   )
 }

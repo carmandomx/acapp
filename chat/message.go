@@ -3,7 +3,6 @@ package chat
 import (
 	"encoding/json"
 	"log"
-	"time"
 
 	"github.com/carmandomx/acapp/models"
 )
@@ -13,7 +12,6 @@ type Message struct {
 	Message string       `json:"message"`
 	Target  *Room        `json:"target"`
 	Sender  models.IUser `json:"sender"`
-	When    time.Time    `json:"when"`
 }
 
 const SendMessageAction = "send-message"
@@ -23,6 +21,7 @@ const UserJoinedAction = "user-join"
 const UserLeftAction = "user-left"
 const JoinRoomPrivateAction = "join-room-private"
 const RoomJoinedAction = "room-joined"
+const ListUsersOnRoom = "users-on-room"
 
 func (i Message) MarshalBinary() ([]byte, error) {
 	return json.Marshal(i)

@@ -53,7 +53,6 @@ func main() {
 	})
 	authorized := r.Group("/")
 	authorized.Use(middleware.TokenAuthMiddleware())
-
 	authorized.DELETE("/users/:id", userH.DeleteUser)
 	r.GET("/ws", func(c *gin.Context) {
 		tokenString := c.Request.Header.Get("Sec-WebSocket-Protocol")
@@ -82,9 +81,10 @@ func main() {
 			return
 		}
 		tokenMetadata, _ := auth.Extract(token)
-		fmt.Println(tokenMetadata)
+
 		id, _ := strconv.ParseUint(tokenMetadata.UserId, 0, 32)
-		chat.ServeWS(wsServer, c.Writer, c.Request, uint(id))
+		user, _ := userRepo.FindById(int(id))
+		chat.ServeWS(wsServer, c.Writer, c.Request, uint(id), user.Name)
 	})
 	r.Run()
 }

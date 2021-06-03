@@ -103,6 +103,7 @@ func (h *BaseHandler) Login(c *gin.Context) {
 	tokens := map[string]string{
 		"access_token":  td.AccessToken,
 		"refresh_token": td.RefreshToken,
+		"userId":        strconv.FormatUint(uint64(u.ID), 10),
 	}
 
 	c.JSON(http.StatusOK, tokens)
