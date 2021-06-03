@@ -1,11 +1,15 @@
 package chat
 
 import (
+	"context"
 	"fmt"
+	"log"
 
-	"github.com/carmandomx/acapp/trace"
+	"github.com/carmandomx/acapp/config"
 	"github.com/google/uuid"
 )
+
+var ctx = context.Background()
 
 type Room struct {
 	Name string `json:"name"`
@@ -18,26 +22,23 @@ type Room struct {
 
 	clients map[*Client]bool
 
-	Tracer trace.Tracer
-
 	Id uuid.UUID `json:"id"`
 
 	Private bool `json:"private"`
 }
 
 func (r *Room) Run() {
+	go r.subscribeToRoomMessages()
 	for {
 		select {
 		case client := <-r.join:
 			r.registerClientInRoom(client)
-			r.Tracer.Trace("New client joined")
 
 		case client := <-r.leave:
 			r.unregisterClientInRoom(client)
-			r.Tracer.Trace("Client left")
 
 		case msg := <-r.forward:
-			r.broadcastToClientsInRoom(msg)
+			r.publishRoomMessage(msg)
 		}
 
 	}
@@ -58,12 +59,6 @@ func (room *Room) unregisterClientInRoom(client *Client) {
 
 }
 
-func (room *Room) broadcastToClientsInRoom(message *Message) {
-	for client := range room.clients {
-		client.send <- message
-	}
-}
-
 func (room *Room) GetName() string {
 	return room.Name
 }
@@ -80,7 +75,6 @@ func NewRoom(name string, private bool) *Room {
 		join:    make(chan *Client),
 		leave:   make(chan *Client),
 		clients: make(map[*Client]bool),
-		Tracer:  trace.Off(),
 		Id:      uuid.New(),
 		Private: private,
 	}
@@ -95,9 +89,35 @@ func (room *Room) notifyClientJoined(client *Client) {
 		Message: fmt.Sprintf(welcomeMessage, client.GetName()),
 	}
 
-	room.broadcastToClientsInRoom(message)
+	room.publishRoomMessage(message)
 }
 
 func (room *Room) GetId() string {
 	return room.Id.String()
+}
+
+func (room *Room) publishRoomMessage(message *Message) {
+	err := config.Redis.Publish(ctx, room.GetName(), message).Err()
+
+	if err != nil {
+		log.Println("Error al publicar mensaje")
+		log.Println(err)
+	}
+}
+
+func (room *Room) subscribeToRoomMessages() {
+	pubsub := config.Redis.Subscribe(ctx, room.GetName())
+
+	ch := pubsub.Channel()
+
+	for msg := range ch {
+		fmt.Println(msg)
+		room.broadcastToClientsInRoom([]byte(msg.Payload))
+	}
+}
+
+func (room *Room) broadcastToClientsInRoom(message []byte) {
+	for client := range room.clients {
+		client.send <- message
+	}
 }

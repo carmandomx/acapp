@@ -15,10 +15,10 @@ const ChatRoom = ({ socket, room, messages, handleMsg, users, handleDM }) => {
   }, [socket, room, messages])
 
   return (
-    <>
+    <div style={{ display: 'flex', flexWrap: 'wrap', width: '30%' }}>
       <TextContainer users={users} handleDM={handleDM} />
       <InfoBar room={room} />
-      <div className='container'>
+      <div className='container' style={{ width: '100%' }}>
         <Messages messages={messages} />
       </div>
       <Input
@@ -26,7 +26,7 @@ const ChatRoom = ({ socket, room, messages, handleMsg, users, handleDM }) => {
         setMessage={setMessage}
         sendMessage={e => handleMsg(e, message, room)}
       />
-    </>
+    </div>
   )
 }
 

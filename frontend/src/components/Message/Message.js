@@ -4,14 +4,15 @@ import './Message.css'
 
 import ReactEmoji from 'react-emoji'
 
-const Message = ({ message, sender }) => {
+const Message = ({ message, sender, userId }) => {
   let trimmedName = 'System'
   let isSentByCurrentUser = false
-  if (sender) {
-    const { name } = sender
-    trimmedName = name.trim().toLowerCase()
 
-    if (name.toLowerCase() === trimmedName) {
+  if (sender) {
+    const { name, id } = sender
+    trimmedName = name.trim().toLowerCase()
+    console.log(userId, id)
+    if (id == userId) {
       isSentByCurrentUser = true
     }
   }
