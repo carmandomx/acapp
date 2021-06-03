@@ -1,15 +1,29 @@
 package config
 
 import (
+	"fmt"
 	"log"
+	"os"
 
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 func ConnectDB() *gorm.DB {
-	dsn := "host=localhost user=kappa password=1234 dbname=acapp port=5432 sslmode=disable"
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	e := godotenv.Load() //Load .env file
+	if e != nil {
+		fmt.Print(e)
+	}
+
+	username := os.Getenv("db_user")
+	password := os.Getenv("db_pass")
+	dbName := os.Getenv("db_name")
+	dbHost := os.Getenv("db_host")
+
+	dbUri := fmt.Sprintf("host=%s user=%s dbname=%s sslmode=disable password=%s", dbHost, username, dbName, password) //Build connection string
+	fmt.Println(dbUri)
+	db, err := gorm.Open(postgres.Open(dbUri), &gorm.Config{})
 	if err != nil {
 		log.Fatal(err)
 	}
