@@ -80,7 +80,7 @@ func (user User) GetName() string {
 
 func (u *User) BeforeSave(tx *gorm.DB) (err error) {
 	u.Password, err = HashPassword(u.Password)
-
+	fmt.Println(u.Password)
 	if err != nil {
 		return err
 	}
